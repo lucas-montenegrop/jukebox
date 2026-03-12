@@ -1,46 +1,31 @@
-import db from "#db/client";
-import bcrypt from "bcrypt";
+import express from "express";
+const router = express.Router();
+export default router;
 
-export async function createUser(username, password) {
-  const sql = `
-  INSERT INTO users
-    (username, password)
-  VALUES
-    ($1, $2)
-  RETURNING *
-  `;
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const {
-    rows: [user],
-  } = await db.query(sql, [username, hashedPassword]);
-  return user;
-}
+import { createUser, getUserByUsernameAndPassword } from "#db/queries/users";
+import requireBody from "#middleware/requireBody";
+import { createToken } from "#utils/jwt";
 
-export async function getUserByUsernameAndPassword(username, password) {
-  const sql = `
-  SELECT *
-  FROM users
-  WHERE username = $1
-  `;
-  const {
-    rows: [user],
-  } = await db.query(sql, [username]);
-  if (!user) return null;
+router.post(
+  "/register",
+  requireBody(["username", "password"]),
+  async (req, res) => {
+    const { username, password } = req.body;
+    const user = await createUser(username, password);
 
-  const isValid = await bcrypt.compare(password, user.password);
-  if (!isValid) return null;
+    const token = await createToken({ id: user.id });
+    res.status(201).send(token);
+  },
+);
 
-  return user;
-}
-
-export async function getUserById(id) {
-  const sql = `
-  SELECT *
-  FROM users
-  WHERE id = $1
-  `;
-  const {
-    rows: [user],
-  } = await db.query(sql, [id]);
-  return user;
-}
+router.post(
+  "/login",
+  requireBody(["username", "password"]),
+  async (req, res) => {
+    const { username, password } = req.body;
+    const user = await getUserByUsernameAndPassword(username, password);
+    if (!user) return res.status(401).send("Invalid username or password.");
+    const token = await createToken({ id: user.id });
+    res.send(token);
+  },
+);
